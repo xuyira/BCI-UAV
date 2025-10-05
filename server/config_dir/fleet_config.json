@@ -1,0 +1,30 @@
+{
+  "_comment": "无人机集群配置示例文件",
+  
+  "alpha": {
+    "type": "airsim",
+    "drones": [
+      {
+        "id": "1",
+        "connection": "172.26.0.1:41451:Drone0"
+      },
+      {
+        "id": "2",
+        "connection": "172.26.0.1:41451:Drone1"
+      }
+    ]
+  },
+  "beta": {
+    "type": "airsim",
+    "drones": [
+      {
+        "id": "1",
+        "connection": "172.26.0.1:41451:Drone2"
+      },
+      {
+        "id": "2",
+        "connection": "172.26.0.1:41451:Drone3"
+      }
+    ]
+  }
+}
