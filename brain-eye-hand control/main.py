@@ -25,6 +25,7 @@ import sys
 from typing import Optional
 
 from coordinator import HandEyeCoordinator, ControlStage
+from http_client import send_control
 from eye_interface import EyeSignalInterface
 from hand_interface import HandSignalInterface
 
@@ -105,8 +106,18 @@ class HandEyeControlSystem:
                 print(signal)
     
     def _handle_output(self, output: str):
-        """处理最终输出（已由协同控制器处理）"""
+        """处理最终输出（同时发送 HTTP 控制消息）"""
         self.output_count += 1
+        try:
+            # output format: "<target> <gesture>"
+            parts = (output or "").split()
+            if len(parts) == 2:
+                target_num = int(parts[0])
+                gesture = parts[1]
+                # Send to local http server with empty id
+                send_control(base="http://localhost:8080", group_number=target_num, gesture=gesture)
+        except Exception:
+            pass
     
     def get_system_status(self) -> dict:
         """获取系统状态"""

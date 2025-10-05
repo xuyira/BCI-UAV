@@ -119,6 +119,13 @@ class HandEyeCoordinator:
             print("进入阶段3")
             print(f"最终输出为：{self.selected_target} {hand_action}")
             
+        # 对外回调：让外部（如 HTTP 客户端）接收最终输出
+        if self.output_callback:
+            try:
+                self.output_callback(f"{self.selected_target} {hand_action}")
+            except Exception:
+                pass
+        
             # 自动回到阶段1
             self._reset_to_stage1()
             
