@@ -110,16 +110,16 @@ class DroneFleetManager:
                     ip = parts[0]
                     port = int(parts[1])
                     vehicle_name = parts[2]
-                    controller = AirSimController(ip=ip, port=port, vehicle_name=vehicle_name)
+                    controller = AirSimController(ip=ip, port=port, vehicle_name=vehicle_name, drone_id=drone_id)
                 elif len(parts) == 2:
                     # 格式: ip:port (单机模式，使用默认vehicle)
                     ip = parts[0]
                     port = int(parts[1])
-                    controller = AirSimController(ip=ip, port=port, vehicle_name="")
+                    controller = AirSimController(ip=ip, port=port, vehicle_name="", drone_id=drone_id)
                 else:
                     # 只有vehicle_name或其他格式
                     # 假设是vehicle_name，使用默认ip和port
-                    controller = AirSimController(vehicle_name=connection)
+                    controller = AirSimController(vehicle_name=connection, drone_id=drone_id)
                     
             elif drone_type == "real":
                 # 真实飞控: connection为连接字符串
@@ -170,6 +170,13 @@ class DroneFleetManager:
             await controller.disconnect()
         except Exception as e:
             print(f"  ✗ [{group_name}:{drone_id}] 紧急降落失败: {e}")
+    
+    async def _unsupported_command_result(self, command: str) -> dict:
+        """返回不支持的命令结果"""
+        return {
+            "success": False,
+            "message": f"该无人机类型不支持命令: {command}"
+        }
     
     def get_controller(self, group: str, drone_id: Optional[str] = None) -> Optional[DroneController]:
         """
@@ -224,37 +231,45 @@ class DroneFleetManager:
         
         参数:
             command: 命令名称 (takeoff, land, move_up, move_down)
-            group: 分组名称
+            group: 分组名称，特殊值 "0" 表示所有分组
             drone_id: 无人机ID，如果为None则控制整个分组
             **kwargs: 命令参数
         
         返回:
             执行结果字典
         """
-        # 检查分组是否存在
-        if group not in self.fleets:
-            return {
-                "success": False,
-                "message": f"分组 '{group}' 不存在",
-                "available_groups": list(self.fleets.keys())
-            }
-        
-        # 确定目标控制器
-        if drone_id is None or drone_id == "":
-            # 控制整个分组
-            controllers = self.get_group_controllers(group)
-            target_info = f"group:{group} (全部 {len(controllers)} 架)"
+        # 特殊处理：group=0 表示所有分组
+        if group == "0" or group == 0:
+            controllers = self.get_all_controllers()
+            target_info = f"所有分组 (共 {len(controllers)} 架无人机)"
+            print(f"\n执行命令: {command} -> {target_info}")
         else:
-            # 控制单个无人机
-            controller = self.get_controller(group, drone_id)
-            if controller is None:
+            # 检查分组是否存在
+            if group not in self.fleets:
                 return {
                     "success": False,
-                    "message": f"无人机 '{group}:{drone_id}' 不存在",
-                    "available_ids": list(self.fleets[group].keys())
+                    "message": f"分组 '{group}' 不存在",
+                    "available_groups": list(self.fleets.keys())
                 }
-            controllers = [controller]
-            target_info = f"group:{group}, id:{drone_id}"
+            
+            # 确定目标控制器
+            if drone_id is None or drone_id == "":
+                # 控制整个分组
+                controllers = self.get_group_controllers(group)
+                target_info = f"group:{group} (全部 {len(controllers)} 架)"
+            else:
+                # 控制单个无人机
+                controller = self.get_controller(group, drone_id)
+                if controller is None:
+                    return {
+                        "success": False,
+                        "message": f"无人机 '{group}:{drone_id}' 不存在",
+                        "available_ids": list(self.fleets[group].keys())
+                    }
+                controllers = [controller]
+                target_info = f"group:{group}, id:{drone_id}"
+            
+            print(f"\n执行命令: {command} -> {target_info}")
         
         if not controllers:
             return {
@@ -275,6 +290,30 @@ class DroneFleetManager:
                 tasks.append(ctrl.move_up(**kwargs))
             elif command == "move_down":
                 tasks.append(ctrl.move_down(**kwargs))
+            elif command == "fly_circle":
+                # 飞圈功能只支持AirSim
+                if hasattr(ctrl, 'fly_circle'):
+                    tasks.append(ctrl.fly_circle(**kwargs))
+                else:
+                    tasks.append(self._unsupported_command_result(command))
+            elif command == "vertical_oscillate":
+                # 上下往复运动只支持AirSim
+                if hasattr(ctrl, 'vertical_oscillate'):
+                    tasks.append(ctrl.vertical_oscillate(**kwargs))
+                else:
+                    tasks.append(self._unsupported_command_result(command))
+            elif command == "spiral_ascent":
+                # 螺旋上升只支持AirSim
+                if hasattr(ctrl, 'spiral_ascent'):
+                    tasks.append(ctrl.spiral_ascent(**kwargs))
+                else:
+                    tasks.append(self._unsupported_command_result(command))
+            elif command == "figure_eight":
+                # 8字飞行只支持AirSim
+                if hasattr(ctrl, 'figure_eight'):
+                    tasks.append(ctrl.figure_eight(**kwargs))
+                else:
+                    tasks.append(self._unsupported_command_result(command))
             elif command == "emergency_land":
                 tasks.append(ctrl.emergency_land(**kwargs))
             else:

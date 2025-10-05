@@ -10,7 +10,7 @@ from drone_controller import DroneController
 class AirSimController(DroneController):
     """AirSim无人机控制器"""
     
-    def __init__(self, ip: str = "127.0.0.1", port: int = 41451, vehicle_name: str = ""):
+    def __init__(self, ip: str = "127.0.0.1", port: int = 41451, vehicle_name: str = "", drone_id: str = ""):
         """
         初始化AirSim控制器
         
@@ -19,11 +19,13 @@ class AirSimController(DroneController):
             port: AirSim服务器端口
             vehicle_name: 无人机名称（用于区分同一AirSim环境中的多个无人机）
                          留空表示使用默认无人机
+            drone_id: 无人机ID（用于标识和日志记录）
         """
         super().__init__()
         self.ip = ip
         self.port = port
         self.vehicle_name = vehicle_name if vehicle_name else ""
+        self.drone_id = drone_id if drone_id else ""
         self.client = None
         self.default_altitude = 5.0
         self.move_step = 2.0
@@ -53,8 +55,13 @@ class AirSimController(DroneController):
             )
             
             self.is_connected = True
-            vehicle_info = f" [{self.vehicle_name}]" if self.vehicle_name else ""
-            print(f"✓ 已连接到AirSim ({self.ip}:{self.port}){vehicle_info}")
+            info_parts = []
+            if self.drone_id:
+                info_parts.append(f"ID:{self.drone_id}")
+            if self.vehicle_name:
+                info_parts.append(f"Vehicle:{self.vehicle_name}")
+            info_str = f" [{', '.join(info_parts)}]" if info_parts else ""
+            print(f"✓ 已连接到AirSim ({self.ip}:{self.port}){info_str}")
             return True
             
         except ImportError:
@@ -77,8 +84,13 @@ class AirSimController(DroneController):
                     None,
                     lambda: self.client.enableApiControl(False, self.vehicle_name)
                 )
-                vehicle_info = f" [{self.vehicle_name}]" if self.vehicle_name else ""
-                print(f"✓ 已断开AirSim连接{vehicle_info}")
+                info_parts = []
+                if self.drone_id:
+                    info_parts.append(f"ID:{self.drone_id}")
+                if self.vehicle_name:
+                    info_parts.append(f"Vehicle:{self.vehicle_name}")
+                info_str = f" [{', '.join(info_parts)}]" if info_parts else ""
+                print(f"✓ 已断开AirSim连接{info_str}")
             except Exception as e:
                 print(f"✗ 断开连接时出错: {e}")
             finally:
@@ -132,6 +144,29 @@ class AirSimController(DroneController):
             loop = asyncio.get_event_loop()
             print("正在降落...")
             
+            # 先获取当前位置
+            state = await loop.run_in_executor(
+                None,
+                lambda: self.client.getMultirotorState(self.vehicle_name)
+            )
+            current_z = state.kinematics_estimated.position.z_val
+            target_z = -0.5  # 离地面0.5米
+
+            
+            # 如果当前高度高于0.5米，先快速下降到0.5米
+            if current_z < target_z:
+                print(f"  第一步: 快速下降到0.5米 (当前高度: {-current_z:.2f}米)")
+                vehicle_name = self.vehicle_name
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.client.moveToZAsync(target_z, 1, vehicle_name=vehicle_name).join()  # 降低速度到2米/秒
+                )
+
+            else:
+                print(f"  跳过第一步：当前已在0.5米或更低")
+            
+            # 然后调用land命令完成最后的降落
+            print("  第二步: 执行land命令着陆")
             await loop.run_in_executor(
                 None,
                 lambda: self.client.landAsync(60, self.vehicle_name).join()
@@ -232,7 +267,34 @@ class AirSimController(DroneController):
                 lambda: self.client.cancelLastTask(self.vehicle_name)
             )
             
-            # 立即降落
+            # 获取当前位置
+            state = await loop.run_in_executor(
+                None,
+                lambda: self.client.getMultirotorState(self.vehicle_name)
+            )
+            current_z = state.kinematics_estimated.position.z_val
+            target_z = -0.5  # 离地面0.5米
+
+            
+            # 如果当前高度高于0.5米，先紧急快速下降到0.5米
+            if current_z < target_z:
+                print(f"  第一步: 紧急快速下降到0.5米 (当前高度: {-current_z:.2f}米)")
+                vehicle_name = self.vehicle_name
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.client.moveToZAsync(target_z, 1, vehicle_name=vehicle_name).join()  # 紧急模式速度3米/秒
+                )
+                
+                # 验证位置
+                state_after = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.getMultirotorState(self.vehicle_name)
+                )
+                actual_z = state_after.kinematics_estimated.position.z_val
+                print(f"  ✓ 下降完成，实际高度: {-actual_z:.2f}米")
+            
+            # 然后调用land命令完成最后的降落
+            print("  第二步: 执行land命令着陆")
             await loop.run_in_executor(
                 None,
                 lambda: self.client.landAsync(60, self.vehicle_name).join()
@@ -245,6 +307,257 @@ class AirSimController(DroneController):
         except Exception as e:
             print(f"✗ 紧急降落失败: {e}")
             return {"success": False, "message": f"紧急降落失败: {str(e)}"}
+    
+    async def fly_circle(self, diameter: float = 5.0, velocity: float = 3.0) -> dict:
+        """
+        飞行一个圆圈
+        参数:
+            diameter: 圆的直径（米）
+            velocity: 飞行速度（米/秒）
+        """
+        if not self.is_connected:
+            return {"success": False, "message": "未连接到无人机"}
+        
+        if not self.is_flying:
+            return {"success": False, "message": "无人机未在飞行"}
+        
+        try:
+            import math
+            loop = asyncio.get_event_loop()
+            
+            # 获取当前位置
+            state = await loop.run_in_executor(
+                None,
+                lambda: self.client.getMultirotorState(self.vehicle_name)
+            )
+            center_x = state.kinematics_estimated.position.x_val
+            center_y = state.kinematics_estimated.position.y_val
+            current_z = state.kinematics_estimated.position.z_val
+            
+            # 计算圆周上的路径点
+            radius = diameter / 2.0
+            num_points = 16  # 圆周上的点数
+            
+            print(f"正在飞行圆圈（直径 {diameter} 米）...")
+            print(f"  中心位置: x={center_x:.2f}, y={center_y:.2f}, z={current_z:.2f}")
+            print(f"  半径: {radius:.2f} 米, 速度: {velocity} 米/秒")
+            
+            vehicle_name = self.vehicle_name
+
+            # 飞行圆周
+            for i in range(num_points + 1):  # +1 以回到起点
+                angle = 2 * math.pi * i / num_points
+                target_x = center_x + radius * math.cos(angle)
+                target_y = center_y + radius * math.sin(angle)
+                
+                print(f"  -> 路径点 {i+1}/{num_points+1}: ({target_x:.2f}, {target_y:.2f})")
+                
+                await loop.run_in_executor(
+                    None,
+                    lambda x=target_x, y=target_y, z=current_z, v=velocity, vn=vehicle_name: 
+                        self.client.moveToPositionAsync(x, y, z, v, vehicle_name=vn).join()
+                )
+            
+            print(f"✓ 圆圈飞行完成")
+            return {"success": True, "message": f"圆圈飞行完成（直径 {diameter} 米）"}
+            
+        except Exception as e:
+            print(f"✗ 圆圈飞行失败: {e}")
+            return {"success": False, "message": f"圆圈飞行失败: {str(e)}"}
+    
+    async def vertical_oscillate(self, distance: float = 2.0, cycles: int = 6, velocity: float = 1.0) -> dict:
+
+        """
+        上下往复运动
+        参数:
+            distance: 每次往复的距离（米）
+            cycles: 往复次数
+            velocity: 运动速度（米/秒）
+        """
+        if not self.is_connected:
+            return {"success": False, "message": "未连接到无人机"}
+        
+        if not self.is_flying:
+            return {"success": False, "message": "无人机未在飞行"}
+        direction = int(self.drone_id) % 2
+        direction = -1 if direction == 0 else direction
+        try:
+            loop = asyncio.get_event_loop()
+            
+            # 获取当前位置
+            state = await loop.run_in_executor(
+                None,
+                lambda: self.client.getMultirotorState(self.vehicle_name)
+            )
+            base_z = state.kinematics_estimated.position.z_val
+            
+            print(f"正在执行上下往复运动（{cycles} 次，幅度 {distance} 米）...")
+            
+            vehicle_name = self.vehicle_name
+            
+            for i in range(cycles):
+                # 上升
+                up_z = base_z - direction * (i%2) * distance  # AirSim中Z轴向下为正
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.client.moveToZAsync(up_z, velocity, vehicle_name=vehicle_name).join()
+                )
+                # 下降
+                await loop.run_in_executor(
+                    None,
+                    lambda: self.client.moveToZAsync(base_z, velocity, vehicle_name=vehicle_name).join()
+                )
+                
+                print(f"  完成第 {i+1}/{cycles} 次往复")
+            
+            print(f"✓ 上下往复运动完成")
+            return {"success": True, "message": f"上下往复运动完成（{cycles} 次，幅度 {distance} 米）"}
+            
+        except Exception as e:
+            print(f"✗ 上下往复运动失败: {e}")
+            return {"success": False, "message": f"上下往复运动失败: {str(e)}"}
+    
+    async def spiral_ascent(self, diameter: float = 4.0, height: float = 3.0, velocity: float = 2.0) -> dict:
+        """
+        螺旋上升 - 边飞圆圈边上升
+        参数:
+            diameter: 螺旋的直径（米）
+            height: 上升的总高度（米）
+            velocity: 飞行速度（米/秒）
+        """
+        if not self.is_connected:
+            return {"success": False, "message": "未连接到无人机"}
+        
+        if not self.is_flying:
+            return {"success": False, "message": "无人机未在飞行"}
+        
+        try:
+            import math
+            loop = asyncio.get_event_loop()
+            
+            # 获取当前位置
+            state = await loop.run_in_executor(
+                None,
+                lambda: self.client.getMultirotorState(self.vehicle_name)
+            )
+            center_x = state.kinematics_estimated.position.x_val
+            center_y = state.kinematics_estimated.position.y_val
+            start_z = state.kinematics_estimated.position.z_val
+            
+            radius = diameter / 2.0
+            num_points = 20  # 螺旋路径点数
+            
+            print(f"正在执行螺旋上升（直径 {diameter}米，上升 {height}米）...")
+            print(f"  起始位置: x={center_x:.2f}, y={center_y:.2f}, 高度={-start_z:.2f}米")
+            
+            vehicle_name = self.vehicle_name
+            
+            # 螺旋上升：每个点的高度逐渐增加
+            for i in range(num_points + 1):
+                angle = 2 * math.pi * i / num_points
+                target_x = center_x + radius * math.cos(angle)
+                target_y = center_y + radius * math.sin(angle)
+                # 线性插值高度：从 start_z 到 start_z - height
+                target_z = start_z - (height * i / num_points)
+                
+                if i % 5 == 0:  # 每5个点打印一次
+                    print(f"  -> 路径点 {i+1}/{num_points+1}: 高度 {-target_z:.2f}米")
+                
+                await loop.run_in_executor(
+                    None,
+                    lambda x=target_x, y=target_y, z=target_z, v=velocity, vn=vehicle_name: 
+                        self.client.moveToPositionAsync(x, y, z, v, vehicle_name=vn).join()
+                )
+            
+            print(f"✓ 螺旋上升完成，总上升 {height}米")
+            return {"success": True, "message": f"螺旋上升完成（直径 {diameter}米，上升 {height}米）"}
+            
+        except Exception as e:
+            print(f"✗ 螺旋上升失败: {e}")
+            return {"success": False, "message": f"螺旋上升失败: {str(e)}"}
+    
+    async def figure_eight(self, size: float = 3.0, velocity: float = 2.5) -> dict:
+        """
+        8字飞行 - 飞一个∞形状的轨迹
+        参数:
+            size: 8字的大小（每个圆的半径，米）
+            velocity: 飞行速度（米/秒）
+        """
+        if not self.is_connected:
+            return {"success": False, "message": "未连接到无人机"}
+        
+        if not self.is_flying:
+            return {"success": False, "message": "无人机未在飞行"}
+        
+        try:
+            import math
+            loop = asyncio.get_event_loop()
+            
+            # 获取当前位置
+            state = await loop.run_in_executor(
+                None,
+                lambda: self.client.getMultirotorState(self.vehicle_name)
+            )
+            center_x = state.kinematics_estimated.position.x_val
+            center_y = state.kinematics_estimated.position.y_val
+            current_z = state.kinematics_estimated.position.z_val
+            
+            radius = size / 2.0
+            num_points_per_circle = 16  # 每个圆的点数
+            
+            print(f"正在执行8字飞行（大小 {size}米）...")
+            print(f"  中心位置: x={center_x:.2f}, y={center_y:.2f}, 高度={-current_z:.2f}米")
+            
+            vehicle_name = self.vehicle_name
+            
+            # 8字由两个圆组成，中心分别在左右
+            # 左圆：中心在 (center_x - radius, center_y)
+            # 右圆：中心在 (center_x + radius, center_y)
+            
+            all_points = []
+            
+            # 第一个圆（右边，顺时针）
+            left_center_x = center_x - radius
+            for i in range(num_points_per_circle):
+                angle = 2 * math.pi * i / num_points_per_circle
+                x = left_center_x + radius * math.cos(angle)
+                y = center_y + radius * math.sin(angle)
+                all_points.append((x, y))
+            
+            # 第二个圆（左边，逆时针）
+            right_center_x = center_x + radius
+            for i in range(num_points_per_circle):
+                angle = -2 * math.pi * i / num_points_per_circle  # 逆时针
+                x = right_center_x + radius * math.cos(angle)
+                y = center_y + radius * math.sin(angle)
+                all_points.append((x, y))
+            
+            print(f"  路径点总数: {len(all_points)}")
+            
+            # 飞行8字轨迹
+            for idx, (target_x, target_y) in enumerate(all_points):
+                if idx % 8 == 0:
+                    print(f"  -> 进度: {idx}/{len(all_points)}")
+                
+                await loop.run_in_executor(
+                    None,
+                    lambda x=target_x, y=target_y, z=current_z, v=velocity, vn=vehicle_name: 
+                        self.client.moveToPositionAsync(x, y, z, v, vehicle_name=vn).join()
+                )
+            
+            # 回到起点
+            await loop.run_in_executor(
+                None,
+                lambda x=center_x, y=center_y, z=current_z, v=velocity, vn=vehicle_name: 
+                    self.client.moveToPositionAsync(x, y, z, v, vehicle_name=vn).join()
+            )
+            
+            print(f"✓ 8字飞行完成")
+            return {"success": True, "message": f"8字飞行完成（大小 {size}米）"}
+            
+        except Exception as e:
+            print(f"✗ 8字飞行失败: {e}")
+            return {"success": False, "message": f"8字飞行失败: {str(e)}"}
     
     async def get_status(self) -> dict:
         """获取无人机状态"""
@@ -276,6 +589,8 @@ class AirSimController(DroneController):
                 }
             }
             
+            if self.drone_id:
+                status["drone_id"] = self.drone_id
             if self.vehicle_name:
                 status["vehicle_name"] = self.vehicle_name
             

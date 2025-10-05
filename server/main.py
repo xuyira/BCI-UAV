@@ -144,7 +144,7 @@ class DroneControlServer:
                 }
                 .controls {
                     display: grid;
-                    grid-template-columns: repeat(2, 1fr);
+                    grid-template-columns: repeat(4, 1fr);
                     gap: 15px;
                     margin: 30px 0;
                 }
@@ -160,6 +160,10 @@ class DroneControlServer:
                 .btn-land { background: #f44336; color: white; }
                 .btn-up { background: #2196F3; color: white; }
                 .btn-down { background: #FF9800; color: white; }
+                .btn-circle { background: #9C27B0; color: white; }
+                .btn-oscillate { background: #00BCD4; color: white; }
+                .btn-spiral { background: #E91E63; color: white; }
+                .btn-eight { background: #3F51B5; color: white; }
                 button:hover { opacity: 0.8; transform: scale(1.05); }
                 .status {
                     background: #e3f2fd;
@@ -200,14 +204,18 @@ class DroneControlServer:
                     <button class="btn-land" onclick="sendCommand(2)">降落 (Land)</button>
                     <button class="btn-up" onclick="sendCommand(3)">升高 (Move Up)</button>
                     <button class="btn-down" onclick="sendCommand(4)">降低 (Move Down)</button>
+                    <button class="btn-circle" onclick="sendCommand(5)">飞圈 (Circle)</button>
+                    <button class="btn-oscillate" onclick="sendCommand(6)">上下往复 (Oscillate)</button>
+                    <button class="btn-spiral" onclick="sendCommand(7)">螺旋上升 (Spiral)</button>
+                    <button class="btn-eight" onclick="sendCommand(8)">8字飞行 (Figure-8)</button>
                 </div>
                 
                 <div id="response"></div>
                 
                 <div class="info">
                     <p>API使用说明:</p>
-                    <code>GET/POST /control?message=1/2/3/4</code><br>
-                    1=起飞, 2=降落, 3=升高, 4=降低
+                    <code>GET/POST /control?message=1/2/3/4/5/6/7/8</code><br>
+                    1=起飞, 2=降落, 3=升高, 4=降低, 5=飞圈, 6=上下往复, 7=螺旋上升, 8=8字飞行
                 </div>
             </div>
             
@@ -321,6 +329,10 @@ class DroneControlServer:
                 .btn-land { background: #f44336; }
                 .btn-up { background: #2196F3; }
                 .btn-down { background: #FF9800; }
+                .btn-circle { background: #9C27B0; }
+                .btn-oscillate { background: #00BCD4; }
+                .btn-spiral { background: #E91E63; }
+                .btn-eight { background: #3F51B5; }
                 button:hover { opacity: 0.8; transform: scale(1.02); }
                 .response {
                     margin-top: 15px;
@@ -365,6 +377,10 @@ class DroneControlServer:
                         <button class="btn-land" onclick="sendCommand(2)">降落</button>
                         <button class="btn-up" onclick="sendCommand(3)">升高</button>
                         <button class="btn-down" onclick="sendCommand(4)">降低</button>
+                        <button class="btn-circle" onclick="sendCommand(5)">飞圈</button>
+                        <button class="btn-oscillate" onclick="sendCommand(6)">往复</button>
+                        <button class="btn-spiral" onclick="sendCommand(7)">螺旋</button>
+                        <button class="btn-eight" onclick="sendCommand(8)">8字</button>
                     </div>
                 </div>
                 
@@ -374,9 +390,10 @@ class DroneControlServer:
                     <p><strong>API使用说明 (集群模式):</strong></p>
                     <code>GET/POST /control?group=alpha&id=1&message=1</code><br>
                     <small>
-                        • group: 必填，无人机分组名称<br>
+                        • group: 必填，无人机分组名称（<strong>group=0 控制所有分组</strong>）<br>
                         • id: 可选，无人机编号（留空则控制整个分组）<br>
-                        • message: 1=起飞, 2=降落, 3=升高, 4=降低
+                        • message: 1=起飞, 2=降落, 3=升高, 4=降低<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5=飞圈, 6=上下往复, 7=螺旋上升, 8=8字飞行
                     </small>
                 </div>
             </div>
@@ -474,11 +491,47 @@ class DroneControlServer:
                 result = await self.controller.move_up(distance=Config.MOVE_STEP)
             elif message == '4':
                 result = await self.controller.move_down(distance=Config.MOVE_STEP)
+            elif message == '5':
+                # 飞圈功能，只支持AirSim
+                if hasattr(self.controller, 'fly_circle'):
+                    result = await self.controller.fly_circle(diameter=5.0)
+                else:
+                    result = {
+                        "success": False,
+                        "message": "当前无人机类型不支持飞圈功能"
+                    }
+            elif message == '6':
+                # 上下往复运动，只支持AirSim
+                if hasattr(self.controller, 'vertical_oscillate'):
+                    result = await self.controller.vertical_oscillate(distance=2.0, cycles=3)
+                else:
+                    result = {
+                        "success": False,
+                        "message": "当前无人机类型不支持上下往复运动功能"
+                    }
+            elif message == '7':
+                # 螺旋上升，只支持AirSim
+                if hasattr(self.controller, 'spiral_ascent'):
+                    result = await self.controller.spiral_ascent(diameter=4.0, height=3.0)
+                else:
+                    result = {
+                        "success": False,
+                        "message": "当前无人机类型不支持螺旋上升功能"
+                    }
+            elif message == '8':
+                # 8字飞行，只支持AirSim
+                if hasattr(self.controller, 'figure_eight'):
+                    result = await self.controller.figure_eight(size=3.0)
+                else:
+                    result = {
+                        "success": False,
+                        "message": "当前无人机类型不支持8字飞行功能"
+                    }
             else:
                 result = {
                     "success": False,
                     "message": f"无效的指令: {message}",
-                    "help": "有效指令: 1=起飞, 2=降落, 3=升高, 4=降低"
+                    "help": "有效指令: 1=起飞, 2=降落, 3=升高, 4=降低, 5=飞圈, 6=上下往复, 7=螺旋上升, 8=8字飞行"
                 }
             
             return web.json_response(result)
@@ -492,11 +545,15 @@ class DroneControlServer:
     
     async def _handle_fleet_mode_control(self, message: str, group: str, drone_id: str):
         """集群模式控制处理"""
-        target_info = f"group={group}"
-        if drone_id:
-            target_info += f", id={drone_id}"
+        # 特殊处理：group=0 表示所有分组
+        if group == "0" or group == 0:
+            target_info = "group=0 (所有分组)"
         else:
-            target_info += " (全组)"
+            target_info = f"group={group}"
+            if drone_id:
+                target_info += f", id={drone_id}"
+            else:
+                target_info += " (全组)"
         
         print(f"\n[集群模式] 收到控制指令: message={message}, {target_info}")
         
@@ -506,7 +563,7 @@ class DroneControlServer:
                 return web.json_response({
                     "success": False,
                     "message": "缺少必需参数: group",
-                    "help": "集群模式需要指定分组: ?group=xxx&message=1"
+                    "help": "集群模式需要指定分组: ?group=xxx&message=1 (group=0表示所有分组)"
                 }, status=400)
             
             # 执行命令
@@ -526,11 +583,27 @@ class DroneControlServer:
                 result = await self.fleet_manager.execute_command(
                     "move_down", group, drone_id, distance=Config.MOVE_STEP
                 )
+            elif message == '5':
+                result = await self.fleet_manager.execute_command(
+                    "fly_circle", group, drone_id, diameter=5.0
+                )
+            elif message == '6':
+                result = await self.fleet_manager.execute_command(
+                    "vertical_oscillate", group, drone_id, distance=2.0, cycles=3
+                )
+            elif message == '7':
+                result = await self.fleet_manager.execute_command(
+                    "spiral_ascent", group, drone_id, diameter=4.0, height=3.0
+                )
+            elif message == '8':
+                result = await self.fleet_manager.execute_command(
+                    "figure_eight", group, drone_id, size=3.0
+                )
             else:
                 result = {
                     "success": False,
                     "message": f"无效的指令: {message}",
-                    "help": "有效指令: 1=起飞, 2=降落, 3=升高, 4=降低"
+                    "help": "有效指令: 1=起飞, 2=降落, 3=升高, 4=降低, 5=飞圈, 6=上下往复, 7=螺旋上升, 8=8字飞行"
                 }
             
             return web.json_response(result)
