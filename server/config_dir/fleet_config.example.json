@@ -1,0 +1,62 @@
+{
+  "_comment": "无人机集群配置示例文件",
+  "_instructions": "1. 复制此文件为 fleet_config.json; 2. 根据实际情况修改配置; 3. 使用 --mode fleet --config fleet_config.json 启动",
+  
+  "alpha": {
+    "_description": "Alpha分组 - AirSim模拟无人机（同一环境中的多架无人机）",
+    "type": "airsim",
+    "drones": [
+      {
+        "id": "1",
+        "connection": "127.0.0.1:41451:Drone1"
+      },
+      {
+        "id": "2",
+        "connection": "127.0.0.1:41451:Drone2"
+      },
+      {
+        "id": "3",
+        "connection": "127.0.0.1:41451:Drone3"
+      }
+    ]
+  },
+  
+  "bravo": {
+    "_description": "Bravo分组 - 真实飞控无人机",
+    "type": "real",
+    "drones": [
+      {
+        "id": "1",
+        "connection": "udp:127.0.0.1:14550"
+      },
+      {
+        "id": "2",
+        "connection": "udp:127.0.0.1:14560"
+      }
+    ]
+  },
+  
+  "charlie": {
+    "_description": "Charlie分组 - 混合示例（串口连接）",
+    "type": "real",
+    "drones": [
+      {
+        "id": "1",
+        "connection": "/dev/ttyACM0"
+      },
+      {
+        "id": "2",
+        "connection": "/dev/ttyACM1"
+      }
+    ]
+  },
+  
+  "_notes": {
+    "分组名称": "可以自定义任意名称，例如: alpha, bravo, team1, squad_a 等",
+    "type": "airsim 或 real",
+    "connection_airsim": "格式: ip:port:vehicle_name，例如 127.0.0.1:41451:Drone1。注意：同一AirSim环境中的多架无人机使用相同的ip:port，通过vehicle_name区分",
+    "connection_real": "支持多种格式: udp:ip:port, tcp:ip:port, /dev/ttyXXX, comX 等",
+    "id": "无人机编号，可以是数字或字符串，在同一分组内唯一",
+    "airsim_vehicle_name": "必须与AirSim settings.json中配置的VehicleName一致"
+  }
+}
