@@ -202,12 +202,12 @@ class DroneControlServer:
                 <div class="controls">
                     <button class="btn-takeoff" onclick="sendCommand(1)">起飞 (Takeoff)</button>
                     <button class="btn-land" onclick="sendCommand(2)">降落 (Land)</button>
-                    <button class="btn-up" onclick="sendCommand(3)">升高 (Move Up)</button>
-                    <button class="btn-down" onclick="sendCommand(4)">降低 (Move Down)</button>
-                    <button class="btn-circle" onclick="sendCommand(5)">飞圈 (Circle)</button>
-                    <button class="btn-oscillate" onclick="sendCommand(6)">上下往复 (Oscillate)</button>
-                    <button class="btn-spiral" onclick="sendCommand(7)">螺旋上升 (Spiral)</button>
-                    <button class="btn-eight" onclick="sendCommand(8)">8字飞行 (Figure-8)</button>
+                    <button class="btn-up" onclick="sendCommand(7)">升高 (Move Up)</button>
+                    <button class="btn-down" onclick="sendCommand(8)">降低 (Move Down)</button>
+                    <button class="btn-circle" onclick="sendCommand(3)">飞圈 (Circle)</button>
+                    <button class="btn-oscillate" onclick="sendCommand(4)">上下往复 (Oscillate)</button>
+                    <button class="btn-spiral" onclick="sendCommand(5)">螺旋上升 (Spiral)</button>
+                    <button class="btn-eight" onclick="sendCommand(6)">8字飞行 (Figure-8)</button>
                 </div>
                 
                 <div id="response"></div>
@@ -375,12 +375,12 @@ class DroneControlServer:
                     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
                         <button class="btn-takeoff" onclick="sendCommand(1)">起飞</button>
                         <button class="btn-land" onclick="sendCommand(2)">降落</button>
-                        <button class="btn-up" onclick="sendCommand(3)">升高</button>
-                        <button class="btn-down" onclick="sendCommand(4)">降低</button>
-                        <button class="btn-circle" onclick="sendCommand(5)">飞圈</button>
-                        <button class="btn-oscillate" onclick="sendCommand(6)">往复</button>
-                        <button class="btn-spiral" onclick="sendCommand(7)">螺旋</button>
-                        <button class="btn-eight" onclick="sendCommand(8)">8字</button>
+                        <button class="btn-up" onclick="sendCommand(7)">升高</button>
+                        <button class="btn-down" onclick="sendCommand(8)">降低</button>
+                        <button class="btn-circle" onclick="sendCommand(3)">飞圈</button>
+                        <button class="btn-oscillate" onclick="sendCommand(4)">往复</button>
+                        <button class="btn-spiral" onclick="sendCommand(5)">螺旋</button>
+                        <button class="btn-eight" onclick="sendCommand(6)">8字</button>
                     </div>
                 </div>
                 
@@ -575,27 +575,27 @@ class DroneControlServer:
                 result = await self.fleet_manager.execute_command(
                     "land", group, drone_id
                 )
-            elif message == '3':
+            elif message == '7':
                 result = await self.fleet_manager.execute_command(
                     "move_up", group, drone_id, distance=Config.MOVE_STEP
                 )
-            elif message == '4':
+            elif message == '8':
                 result = await self.fleet_manager.execute_command(
                     "move_down", group, drone_id, distance=Config.MOVE_STEP
                 )
-            elif message == '5':
+            elif message == '3':
                 result = await self.fleet_manager.execute_command(
                     "fly_circle", group, drone_id, diameter=5.0
                 )
-            elif message == '6':
+            elif message == '4':
                 result = await self.fleet_manager.execute_command(
                     "vertical_oscillate", group, drone_id, distance=2.0, cycles=3
                 )
-            elif message == '7':
+            elif message == '5':
                 result = await self.fleet_manager.execute_command(
                     "spiral_ascent", group, drone_id, diameter=4.0, height=3.0
                 )
-            elif message == '8':
+            elif message == '6':
                 result = await self.fleet_manager.execute_command(
                     "figure_eight", group, drone_id, size=3.0
                 )
@@ -603,7 +603,7 @@ class DroneControlServer:
                 result = {
                     "success": False,
                     "message": f"无效的指令: {message}",
-                    "help": "有效指令: 1=起飞, 2=降落, 3=升高, 4=降低, 5=飞圈, 6=上下往复, 7=螺旋上升, 8=8字飞行"
+                    "help": "有效指令: 1=起飞, 2=降落, 7=升高, 8=降低, 3=飞圈, 4=上下往复, 5=螺旋上升, 6=8字飞行"
                 }
             
             return web.json_response(result)
